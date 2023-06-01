@@ -1,0 +1,132 @@
+script struct:
+    +00 | 
+    +0C | string | path
+    +14 | string | name
+    +30 | void * | loaded item 4
+    +38 | string[] * | function names
+    +40 | string[] * | variable names
+    +58 | void * | loaded item 5
+    +60 | [] | loaded item 6
+
+something function
+    +18 | i32 | param count (< 0 = variable?)
+    +1C | u32[]* | param types
+
+read_value
+{
+    var = read32() + 0xFEFFFFFF (- 0x01000001)
+
+    var == 0x08000010: string
+        len = read32()
+        dat = read()
+}
+
+read_head
+{
+    +00 | u32 | count of something (function names?)
+    +04 | u32 | count of something (variable names?)
+    +08 | u32 | count of something
+    +0C | u32 | count of something
+    +10 | u32 | count of something (variable info?)
+    +18 | u32 | number of something of size 8
+    +1C | u32 | number of sub scripts
+}
+
+script types?:
+    ent32 & 0x00FFFFFF:
+        0x000001 = null
+        0x000002 = integer
+        0x000004 = float
+        0x000008 = bool
+        0x000010 = string
+        0x000020 = table
+        0x000040 = array
+        0x000080 = userdata
+        0x000100 = function
+        0x000200 = function
+        0x000400 = generator
+        0x000800 = userdata
+        0x001000 = thread
+        0x002000 = function
+        0x004000 = class
+        0x008000 = instance
+        0x010000 = weakref
+
+script thingy:
+    0x08000010: name/path?
+
+// head
+expect32("RIQS")
+expect32(1)
+
+expect32("TRAP")
+
+path = read_value
+name = read_value
+
+expect32("TRAP")
+
+read_head
+
+// ...
+
+expect32("TRAP")
+
+for i in head->unk_00
+{
+    // those look like function names
+    [r4+38][i] = read_value
+}
+
+expect32("TRAP")
+
+for i in head->unk_04
+{
+    // those look like... variable names? "this"?
+    [r4+38][i] = read_value
+}
+
+expect32("TRAP")
+
+for i in head->unk_08
+{
+    read_value?
+    read_value?
+    TODO
+}
+
+expect32("TRAP")
+
+for i in head->unk_0C
+{
+    read_value // variable name?
+    read32
+    read32
+    read32
+}
+
+expect32("TRAP")
+
+read(head->unk_10 * 8)
+
+expect32("TRAP")
+
+read(head->unk_14 * 4)
+
+expect32("TRAP")
+
+read(head->unk_18 * 8)
+
+expect32("TRAP")
+
+for i in head->unk_1C
+{
+    read_script
+}
+
+read32
+read8
+read8
+
+// tail
+expect32("LIAT")

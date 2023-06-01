@@ -1,0 +1,18 @@
++00 | char[4] | "PACK" or "PACA"
++04 | u32?    | size?
++08 | ?
++0C | u16     | entry count in some u32 offset table
++0E | u16     | offset of some u32 offset table
+
+offset table link to this struct:
++00 | u16    | offset of data from here (aka size of header)
++02 | u16?   | ? seems unread
++04 | u32    | size of data
++08 | char[] | filename
+
+"PACA" from end:
+    -08 | 3byte | offset (down from end) of lower bound
+    -05 | 1byte | offset (down from end) of upper bound
+    -04 | 3byte | size of unpacked data?
+
+    I think this may be some lzss again, but backwards

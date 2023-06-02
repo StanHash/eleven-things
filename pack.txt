@@ -1,12 +1,15 @@
 +00 | char[4] | "PACK" or "PACA"
-+04 | u32?    | size?
-+08 | ?
-+0C | u16     | entry count in some u32 offset table
-+0E | u16     | offset of some u32 offset table
++04 | u32     | size of file (decompressed if PACA)
++08 | no idea (FEFF0100)
++0C | u16     | entry count in entry offset table
++0E | u16     | offset of entry offset table
 
-offset table link to this struct:
-+00 | u16    | offset of data from here (aka size of header)
-+02 | u16?   | ? seems unread
+entry offset table:
+    table of u32 offsets to entry structs
+
+offset table link to this entry struct:
++00 | u16    | offset of data from here (aka size of header + filename)
++02 | u16    | number of padding bytes used for alignment (I think? also this seems to be unused)
 +04 | u32    | size of data
 +08 | char[] | filename
 
@@ -16,3 +19,4 @@ offset table link to this struct:
     -04 | 3byte | size of unpacked data?
 
     I think this may be some lzss again, but backwards
+    see paca_decomp.s for decompressor disasm, or tools/rab/compression.cc for C++ impl

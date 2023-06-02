@@ -9,6 +9,9 @@
 #include <string_view> // std::string_view
 #include <vector>      // std::vector
 
+#include "compression.hh"
+#include "helpers.hh"
+
 struct FileDeleter
 {
     void operator()(std::FILE * file)
@@ -17,18 +20,6 @@ struct FileDeleter
             std::fclose(file);
     }
 };
-
-template <typename T, std::size_t L = sizeof(T)> T le2h(std::uint8_t const * data)
-{
-    T result = 0;
-
-    for (std::size_t i = 0; i < L; i++)
-    {
-        result = result | (((T)data[i]) << (i * 8));
-    }
-
-    return result;
-}
 
 int Dump(int argc, char const * argv[])
 {
@@ -66,76 +57,110 @@ int Dump(int argc, char const * argv[])
         return EXIT_FAILURE;
     }
 
+    std::vector<std::uint8_t> file_data(file_size);
+
     std::fseek(file, 0, SEEK_SET);
 
-    std::array<std::uint8_t, 0x10> head_data;
-
-    if (std::fread(head_data.data(), 1, head_data.size(), file) != head_data.size())
+    if (std::fread(file_data.data(), 1, file_data.size(), file) != file_data.size())
     {
         std::fprintf(stderr, "ERROR: head read error.\n");
         return EXIT_FAILURE;
     }
 
-    if (std::memcmp(head_data.data(), "PACK", 4) != 0)
+    // close file
+    file_owner.reset();
+
+    bool const is_pack = std::memcmp(file_data.data(), "PACK", 4) == 0;
+    bool const is_paca = std::memcmp(file_data.data(), "PACA", 4) == 0;
+
+    if (!is_pack && !is_paca)
     {
-        if (std::memcmp(head_data.data(), "PACA", 4) != 0)
-        {
-            std::fprintf(stderr, "WARNING: bad magic (expected PACK or PACA).\n");
-        }
-        else
-        {
-            std::fprintf(stderr, "WARNING: we don't really know how to dump PACA files yet.\n");
-        }
+        std::fprintf(stderr, "WARNING: bad magic (expected PACK or PACA).\n");
+        return EXIT_FAILURE;
     }
 
-    std::size_t entry_count = le2h<std::size_t, 2>(head_data.data() + 0x0C);
-    std::size_t entries_off = le2h<std::size_t, 2>(head_data.data() + 0x0E);
+    if (is_paca)
+    {
+        file_data = Decompress(file_data);
 
-    std::array<std::uint8_t, 4> entry_buf;
+        if (file_data.size() <= 0x10)
+        {
+            std::fprintf(stderr, "ERROR: PACA decompression failed.\n");
+            return EXIT_FAILURE;
+        }
+
+#if 0
+        // I used this to debug the decompression code
+
+        std::string output_path(dir_path);
+        output_path.push_back('/');
+        output_path.append("rab_decompressed_paca.dmp");
+
+        // helper
+        std::unique_ptr<std::FILE, FileDeleter> output_file_owner { std::fopen(output_path.c_str(), "wb") };
+
+        std::FILE * output_file = output_file_owner.get();
+
+        if (output_file == nullptr)
+        {
+            std::fprintf(stderr, "ERROR: couldn't open file for write: '%s'.\n", output_path.c_str());
+            return EXIT_FAILURE;
+        }
+
+        if (std::fwrite(file_data.data(), 1, file_data.size(), output_file) != file_data.size())
+        {
+            std::fprintf(stderr, "ERROR: read error when writing to file: '%s'.\n", output_path.c_str());
+            return EXIT_FAILURE;
+        }
+#endif
+    }
+
+    std::size_t const declared_file_size = le2h<size_t, 4>(file_data.data() + 0x04);
+    std::size_t const unknown_08 = le2h<size_t, 4>(file_data.data() + 0x08);
+    std::size_t const entry_count = le2h<std::size_t, 2>(file_data.data() + 0x0C);
+    std::size_t const entries_off = le2h<std::size_t, 2>(file_data.data() + 0x0E);
+
+    if (declared_file_size != file_data.size())
+    {
+        std::fprintf(stderr, "WARNING: declared file size doesn't correspond to real file size.\n");
+    }
+
+    std::printf("value of unknown_08: %08zX\n", unknown_08);
+
+    if (entries_off + 4 * entry_count >= file_data.size())
+    {
+        std::fprintf(stderr, "ERROR: file entry list ends out of file bounds.\n");
+        return EXIT_FAILURE;
+    }
 
     for (std::size_t i = 0; i < entry_count; i++)
     {
-        std::fseek(file, entries_off + i * 4, SEEK_SET);
+        std::size_t entry_off_off = entries_off + i * 4;
+        std::size_t entry_off = le2h<std::size_t, 4>(file_data.data() + entry_off_off);
 
-        if (std::fread(entry_buf.data(), 1, entry_buf.size(), file) != entry_buf.size())
-        {
-            std::fprintf(stderr, "ERROR: entry offset read error.\n");
-            return EXIT_FAILURE;
-        }
-
-        std::size_t entry_off = le2h<std::size_t, 4>(entry_buf.data());
-
-        std::vector<std::uint8_t> entry_data;
-
-        std::fseek(file, entry_off, SEEK_SET);
-
-        // we read thrice: one with size 8, one with size head_size - 8, and one final one with data_size
+        uint8_t const * entry_data = file_data.data() + entry_off;
 
         // read head head
 
-        entry_data.resize(8);
-
-        if (std::fread(entry_data.data(), 1, entry_data.size(), file) != entry_data.size())
+        if (entry_off + 8 >= file_data.size())
         {
-            std::fprintf(stderr, "ERROR: entry head head read error.\n");
+            std::fprintf(stderr, "ERROR: header for file entry %zu ends out of file bounds.\n", i);
             return EXIT_FAILURE;
         }
 
-        std::size_t head_size = le2h<std::size_t, 2>(entry_data.data() + 0x00);
-        std::size_t unknown_2 = le2h<std::size_t, 2>(entry_data.data() + 0x02);
-        std::size_t data_size = le2h<std::size_t, 4>(entry_data.data() + 0x04);
+        std::size_t head_size = le2h<std::size_t, 2>(entry_data + 0x00);
+        std::size_t declared_pad = le2h<std::size_t, 2>(entry_data + 0x02);
+        std::size_t data_size = le2h<std::size_t, 4>(entry_data + 0x04);
 
-        entry_data.resize(head_size + data_size);
+        if (entry_off + head_size >= file_data.size())
+        {
+            std::fprintf(stderr, "ERROR: file entry %zu ends out of file bounds.\n", i);
+            return EXIT_FAILURE;
+        }
 
         // read head name
 
-        if (std::fread(entry_data.data() + 8, 1, head_size - 8, file) != head_size - 8)
-        {
-            std::fprintf(stderr, "ERROR: entry head name read error.\n");
-            return EXIT_FAILURE;
-        }
-
-        char const * beg_str = reinterpret_cast<char const *>(entry_data.data() + 8);
+        char const * beg_str = reinterpret_cast<char const *>(entry_data + 8);
         char const * end_str = reinterpret_cast<char const *>(memchr(beg_str, 0, head_size - 8));
 
         if (end_str == nullptr)
@@ -143,16 +168,23 @@ int Dump(int argc, char const * argv[])
 
         std::string head_name(beg_str, end_str);
 
-        // read data
-
-        if (std::fread(entry_data.data() + head_size, 1, data_size, file) != data_size)
+        if (entry_off + head_size + data_size > file_data.size())
         {
-            std::fprintf(stderr, "ERROR: entry data read error.\n");
+            std::fprintf(stderr, "ERROR: file entry %zu ('%s') ends out of file bounds.\n", i, head_name.c_str());
             return EXIT_FAILURE;
         }
 
+        // print info
+
+        std::size_t next_entry_off = (i + 1 < entry_count)
+            ? le2h<std::size_t, 4>(file_data.data() + entries_off + (i + 1) * 4)
+            : file_data.size();
+
+        bool is_expected_next_off = next_entry_off == entry_off + head_size + data_size + declared_pad;
+
         std::printf(
-            "entry %d: %s (%d bytes, unk_02 = %02X)\n", (int)i, head_name.c_str(), (int)data_size, (int)unknown_2);
+            "file entry %d: %s (%zd bytes, padding: %zX%s)\n", (int)i, head_name.c_str(), data_size, declared_pad,
+            is_expected_next_off ? "" : " (declared wrong)");
 
         // dump data
 
@@ -171,7 +203,7 @@ int Dump(int argc, char const * argv[])
             return EXIT_FAILURE;
         }
 
-        if (std::fwrite(entry_data.data() + head_size, 1, data_size, output_file) != data_size)
+        if (std::fwrite(entry_data + head_size, 1, data_size, output_file) != data_size)
         {
             std::fprintf(stderr, "ERROR: read error when writing to file: '%s'.\n", output_path.c_str());
             return EXIT_FAILURE;
@@ -187,6 +219,12 @@ int Pack(int argc, char const * argv[])
     return EXIT_FAILURE;
 }
 
+int Paca(int argc, char const * argv[])
+{
+    std::fprintf(stderr, "ERROR: paca is unimplemented.\n");
+    return EXIT_FAILURE;
+}
+
 int main(int argc, char const * argv[])
 {
     if (argc < 2)
@@ -195,8 +233,9 @@ int main(int argc, char const * argv[])
             stderr,
             "Usage:\n"
             "  %s dump PACK DIR\n"
-            "  %s pack PACK FILES...\n",
-            argv[0], argv[0]);
+            "  %s pack PACK FILES...\n"
+            "  %s paca PACA FILES...\n",
+            argv[0], argv[0], argv[0]);
 
         return EXIT_FAILURE;
     }
@@ -204,10 +243,22 @@ int main(int argc, char const * argv[])
     std::string_view subcommand { argv[1] };
 
     if (subcommand == "pack")
+    {
         return Pack(argc - 2, argv + 2);
-
-    if (subcommand == "dump")
+    }
+    else if (subcommand == "paca")
+    {
+        return Paca(argc - 2, argv + 2);
+    }
+    else if (subcommand == "dump")
+    {
         return Dump(argc - 2, argv + 2);
+    }
+    else
+    {
+        std::fprintf(stderr, "unknown subcommand: %s.\n", argv[1]);
+        return EXIT_FAILURE;
+    }
 
     return EXIT_SUCCESS;
 }

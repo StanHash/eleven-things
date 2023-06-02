@@ -2,7 +2,7 @@
 
 # lazy
 TARGET := rab
-SOURCES := main.cc
+SOURCES := main.cc compression.cc
 HEADERS :=
 
 CXX ?= g++

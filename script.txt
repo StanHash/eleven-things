@@ -1,3 +1,12 @@
+scripts are (compiled) squirrel 2 scripts
+see squirrel 2 source code
+
+tools/nutcracker is a decompiler for compiled squirrel 2 scripts
+
+=========================================
+============ old notes below ============
+=========================================
+
 script struct:
     +00 | 
     +0C | string | path

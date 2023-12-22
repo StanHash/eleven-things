@@ -1,0 +1,14 @@
++00 | char[4] | "BXON"
++04 | u32     | some number, version?
++08 | u32     | ???????? (checksum maybe????)
++0C | char[?] | some identifier name
++20 | u32     | number of strings
++24 | u32     | some number (8?)
++28 | 26 26 26 26
++2C | u32[]   | offsets (from offset of offset) of strings: for example, offset of id 3 is 2C + 4 * 3 + offset[3]
+
+each string is after a 26 26 26 26
+
+26 26 26 26 is some kind of separator?
+strings are UTF16-LE
+40 40 is padding?

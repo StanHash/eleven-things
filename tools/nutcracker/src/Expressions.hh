@@ -206,9 +206,10 @@ public:
                 {
                     const char c = *i;
 
-                    if (c < 0x20 || c > 0x7e)
+                    // STAN: print the raw string (UTF-8 Japanese, probably)
+                    if (false && (c < 0x20 || c > 0x7e))
                     {
-                        m_text += "\\x00";
+                        m_text += "\\x";
                         m_text += ToHex((c >> 4) & 0x0f);
                         m_text += ToHex(c & 0x0f);
                     }

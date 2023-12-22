@@ -1,0 +1,9 @@
+folder scripts is full of pack files that contain at least one script.cnut file
+that file is a compiled squirrel script
+
+get the decompiled file:
+mkdir unpack_dir
+tools/rab/rab path/to/script/xyz.pack unpack_dir
+tools/nutcracker/nutcracker unpack_dir/script.cnut > script.nut
+
+sometimes there's also a ie.bxon file. bxon contain strings I think
